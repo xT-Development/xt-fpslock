@@ -1,11 +1,11 @@
 return {
     FPSCap = 60,                        -- FPS limit
 
-    tolerance = 0,                      -- allow this many FPS over the limit for spikes
+    tolerance = 6,                      -- allow this many FPS over the limit for spikes
 
-    sustainedSeconds = 10,              -- how long the player must be over the limit before receiving a warning/strike
+    sustainedSeconds = 60,              -- how long the player must be over the limit before receiving a warning/strike
 
-    evaluateInterval = 1.0,             -- how often to evaluate
+    evaluateInterval = 1.0,             -- how often to evaluate in seconds
 
     rollingWindowSeconds = 10,          -- capture this many seconds of frames, then get the average
 
