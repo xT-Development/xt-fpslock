@@ -4,7 +4,7 @@
 </div>
 
 # Features
-- Accurate real-time FPS measurment using configrable buffer size
+- Accurate real-time FPS measurment using configurable buffer size
 - Server defined FPS limit with configurable tolerance
 - Violation warnings for sustained excessive FPS
 - Configurable violation limits, dropping the player when they receive max FPS violations
