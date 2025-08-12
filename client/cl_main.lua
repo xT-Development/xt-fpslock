@@ -1,51 +1,49 @@
 local config = lib.load('configs.client')
 
+local GetFrameTime = GetFrameTime
+local IsPauseMenuActive = IsPauseMenuActive
+local NetworkIsSessionStarted = NetworkIsSessionStarted
+local IsPlayerSwitchInProgress = IsPlayerSwitchInProgress
+
 -- fps monitor
 local FPSMonitor = {
-    frameBuffer = {},
-    bufferSize = math.min(300, math.max(60, math.ceil(config.evaluateInterval * config.FPSCap * 1.2))), -- adds 0.2% for safety
-    currentIndex = 1,
-    bufferFull = false,
-    frameSum = 0.0,
-
-    evalTimer = 0.0,
-    overSustain = 0.0,
-    showWarning = false,
-    lastGameState = false,
+    buffer = {},
+    bufferSize = math.min(120, math.max(30, math.ceil(config.evaluateInterval * config.FPSCap))),
+    index = 1,
+    count = 0,
+    sum = 0.0,
+    showWarning = false
 }
 
 -- init buffer
-function FPSMonitor:init()
-    for i = 1, self.bufferSize do
-        self.frameBuffer[i] = 0.0
-    end
+for i = 1, FPSMonitor.bufferSize do
+    FPSMonitor.buffer[i] = 0.0
 end
 
 -- add frame time
 function FPSMonitor:addFrameTime(frameTime)
-    self.frameSum = self.frameSum - self.frameBuffer[self.currentIndex] -- remove old
+    if self.count == self.bufferSize then
+        self.sum = self.sum - self.buffer[self.index]
+    else
+        self.count = self.count + 1
+    end
 
     -- add new
-    self.frameBuffer[self.currentIndex] = frameTime
-    self.frameSum = self.frameSum + frameTime
+    self.buffer[self.index] = frameTime
+    self.sum = self.sum + frameTime
 
-    -- update index and move position
-    self.currentIndex = self.currentIndex + 1
-    if self.currentIndex > self.bufferSize then
-        self.currentIndex = 1
-        self.bufferFull = true
+    -- update index
+    self.index = self.index + 1
+    if self.index > self.bufferSize then
+        self.index = 1
     end
 end
 
 -- calculate average fps
 function FPSMonitor:getAverageFPS()
-    local count = self.bufferFull and self.bufferSize or (self.currentIndex - 1)
-    if count == 0 then
-        return 0
-    end
-
-    local averageFrameTime = self.frameSum / count -- calculate average
-    return averageFrameTime > 0 and (1.0 / averageFrameTime) or 0
+    if self.count == 0 then return 0 end
+    local avgFrameTime = self.sum / self.count
+    return avgFrameTime > 0 and (1.0 / avgFrameTime) or 0
 end
 
 -- check if monitoring is allowed
@@ -65,75 +63,48 @@ function FPSMonitor:handleFPSViolation(avgFPS)
         })
 
         FPSMonitor.showWarning = false
-        FPSMonitor.overSustain = 0.0
     end)
 
     TriggerServerEvent('xt-fpslock:server:strikePlayer') -- strike player
 end
 
--- main monitoring
-function FPSMonitor:update(deltaTime)
-    self:addFrameTime(deltaTime)
-
-    local canMonitor = self:canMonitor()
-
-    -- reset timers
-    if canMonitor and not self.lastGameState then
-        self.evalTimer = 0.0
-        self.overSustain = 0.0
-    end
-
-    -- update state
-    self.lastGameState = canMonitor
-
-    if not canMonitor then return end -- nothing to do, return
-
-    self.evalTimer = self.evalTimer + deltaTime -- update timer
-
-    if self.evalTimer >= config.evaluateInterval then -- evaluate fps
-        local avgFPS = self:getAverageFPS()
-        local overLimit = avgFPS > (config.FPSCap + config.tolerance)
-
-        if overLimit then -- over limit, add time
-            self.overSustain = self.overSustain + self.evalTimer
-        else
-            self.overSustain = math.max(0.0, self.overSustain - (2.0 * self.evalTimer))
-        end
-
-        if self.overSustain >= config.sustainedSeconds then -- over sustained time, show warning
-            self:handleFPSViolation(avgFPS)
-        end
-
-        self.evalTimer = 0.0 -- reset evaluation timer
-    else
-        local avgFPS = self:getAverageFPS()
-        local overLimit = avgFPS > (config.FPSCap + config.tolerance)
-
-        if overLimit then -- over limit, add time
-            self.overSustain = self.overSustain + deltaTime
-        else
-            self.overSustain = math.max(0.0, self.overSustain - (2.0 * deltaTime))
-        end
-    end
-end
-
--- init monitor
-FPSMonitor:init()
-
 CreateThread(function()
-    local nextWait = 0
+    local evalTimer = 0.0
+    local overSustain = 0.0
+    local sleep = 0
 
     while true do
         local frameTime = GetFrameTime()
-        FPSMonitor:update(frameTime)
+        FPSMonitor:addFrameTime(frameTime)
 
-        if FPSMonitor:canMonitor() then
-            nextWait = 0
+        if FPSMonitor:canMonitor() then -- check if allowed to monitor
+            sleep = 0
+            evalTimer = evalTimer + frameTime
+
+            local avgFPS = FPSMonitor:getAverageFPS()
+            local overLimit = avgFPS > (config.FPSCap + config.tolerance)
+
+            if overLimit then -- sustained over limit
+                overSustain = overSustain + frameTime
+            else
+                overSustain = math.max(0.0, overSustain - (2.0 * frameTime))
+            end
+
+            -- evaluate timer
+            if evalTimer >= config.evaluateInterval then
+                evalTimer = 0.0
+
+                -- check if over limit
+                if overSustain >= config.sustainedSeconds then
+                    FPSMonitor:handleFPSViolation(avgFPS) -- handle violation
+                    overSustain = 0.0
+                end
+            end
         else
-            nextWait = 100
+            sleep = 100
         end
 
-        Wait(nextWait)
+        Wait(sleep)
     end
 end)
 
