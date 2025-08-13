@@ -9,9 +9,8 @@ local IsPlayerSwitchInProgress = IsPlayerSwitchInProgress
 local FPSMonitor = {
     buffer = {},
     bufferSize = math.min(120, math.max(30, math.ceil(config.evaluateInterval * config.FPSCap))),
-    index = 1,
-    count = 0,
     sum = 0.0,
+    overSustain = 0.0,
     showWarning = false
 }
 
@@ -22,27 +21,18 @@ end
 
 -- add frame time
 function FPSMonitor:addFrameTime(frameTime)
-    if self.count == self.bufferSize then
-        self.sum = self.sum - self.buffer[self.index]
-    else
-        self.count = self.count + 1
-    end
-
-    -- add new
-    self.buffer[self.index] = frameTime
+    self.buffer[#self.buffer + 1] = frameTime
     self.sum = self.sum + frameTime
 
-    -- update index
-    self.index = self.index + 1
-    if self.index > self.bufferSize then
-        self.index = 1
+    if #self.buffer > self.bufferSize then
+        self.sum = self.sum - self.buffer[1]
+        table.remove(self.buffer, 1)
     end
 end
 
 -- calculate average fps
 function FPSMonitor:getAverageFPS()
-    if self.count == 0 then return 0 end
-    local avgFrameTime = self.sum / self.count
+    local avgFrameTime = self.sum / #self.buffer
     return avgFrameTime > 0 and (1.0 / avgFrameTime) or 0
 end
 
@@ -70,7 +60,6 @@ end
 
 CreateThread(function()
     local evalTimer = 0.0
-    local overSustain = 0.0
     local sleep = 0
 
     while true do
@@ -85,9 +74,9 @@ CreateThread(function()
             local overLimit = avgFPS > (config.FPSCap + config.tolerance)
 
             if overLimit then -- sustained over limit
-                overSustain = overSustain + frameTime
+                FPSMonitor.overSustain = FPSMonitor.overSustain + frameTime
             else
-                overSustain = math.max(0.0, overSustain - (2.0 * frameTime))
+                FPSMonitor.overSustain = math.max(0.0, FPSMonitor.overSustain - (2.0 * frameTime))
             end
 
             -- evaluate timer
@@ -95,9 +84,9 @@ CreateThread(function()
                 evalTimer = 0.0
 
                 -- check if over limit
-                if overSustain >= config.sustainedSeconds then
+                if FPSMonitor.overSustain >= config.sustainedSeconds then
                     FPSMonitor:handleFPSViolation(avgFPS) -- handle violation
-                    overSustain = 0.0
+                    FPSMonitor.overSustain = 0.0
                 end
             end
         else
