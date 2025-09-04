@@ -20,3 +20,7 @@ exports['xt-fpslock']:getOverSustainTime()  -- returns how long the player has b
 
 # Dependencies
 - [ox_lib](https://github.com/CommunityOx/ox_lib/releases)
+
+# Previews
+![FPS Lock Help](image-2.png)
+![Warning Notification](image-1.png)
